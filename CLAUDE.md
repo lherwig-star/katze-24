@@ -43,3 +43,8 @@ an einen Kanal meldet.
 - `demo_books`: Uebungs-Crawler gegen books.toscrape.com, nicht produktiv.
 - `src/jsonld.py`: gemeinsame JSON-LD-Hilfsfunktionen (von zooplus.py und
   fressnapf.py genutzt) - fuer den naechsten Shop zuerst hier nachsehen.
+- Taeglicher Crawl laeuft ueber `.github/workflows/crawl.yml` (GitHub
+  Actions, Cloud). Preisdaten landen auf dem Branch `data`, NICHT auf
+  `main` - main bleibt PR-geschuetzter Code, `data` ist reine
+  Bot-Historie. Lokal abholen: siehe README, Abschnitt "Automatisch
+  crawlen".
