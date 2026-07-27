@@ -36,9 +36,19 @@ log = logging.getLogger(__name__)
 
 
 def format_deal(deal: Deal) -> str:
-    """Deal -> fertige Nachricht."""
+    """Deal -> fertige Nachricht, inkl. der zwei rechtlichen Pflichtangaben
+    fuer Posts mit Affiliate-Link (siehe README/CLAUDE.md):
+
+      - "Werbung" als erste Zeile, ungekuerzt und ohne Umschreibung
+        (§ 5a Abs. 6 UWG - reicht nicht als Hinweis irgendwo unten).
+      - Zeitstempel, wann der Preis zuletzt geprueft wurde - Schutz gegen
+        den Vorwurf einer veralteten/irrefuehrenden Preisangabe.
+
+    Beides ist hart in jeder Nachricht drin, nicht optional - es soll keinen
+    Post ohne diese zwei Zeilen geben koennen.
+    """
     o = deal.offer
-    lines = [f"🔥 {o.title}"]
+    lines = ["Werbung", "", f"🔥 {o.title}"]
 
     price = _eur(o.price_cents)
     ref = _eur(deal.ref_price_cents)
@@ -48,8 +58,23 @@ def format_deal(deal: Deal) -> str:
         lines.append(f"Grundpreis: {_eur(round(o.price_per_unit_cents))}/{o.unit}")
 
     lines.append(deal.reason)
-    lines.append(o.url)
+    lines.append(f"Preis geprüft: {o.seen_at.strftime('%d.%m.%Y %H:%M')} UTC")
+    lines.append(affiliate_url(o.url))
     return "\n".join(lines)
+
+
+def affiliate_url(url: str) -> str:
+    """Produkt-URL fuer den Versand aufbereiten.
+
+    Aktuell reine Passthrough-Funktion. Das ist bewusst die einzige Stelle
+    im Code, an der die versendete URL entsteht - sobald ihr bei einem
+    Partnerprogramm (z.B. Awin, bei dem Zooplus und Fressnapf laufen)
+    freigeschaltet seid, wird hier aus dem Shop-Link ein Affiliate-Link.
+    Wie genau das aussieht (i.d.R. ein Redirect-Link mit eurer Publisher-ID
+    als URL-Parameter), haengt vom Netzwerk ab - deshalb noch kein Code
+    dafuer, der nur geraten waere.
+    """
+    return url
 
 
 class Notifier(ABC):
