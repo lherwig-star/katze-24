@@ -1,4 +1,4 @@
-# petdeals
+# katze-24 (petdeals)
 
 Ein Bot, der Tierbedarf-Shops crawlt, Preise über Zeit speichert und meldet,
 wenn ein Produkt wirklich günstig ist – nicht nur laut Streichpreis vom Shop,
