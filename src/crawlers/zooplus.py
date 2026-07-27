@@ -13,7 +13,9 @@ Warum das viel besser ist:
 Faustregel fuer jeden neuen Shop, den ihr anbindet:
   1. Seite mit curl laden
   2. nach 'application/ld+json' greppen
-  3. wenn Produkte drin sind -> fertig, nie CSS anfassen
+  3. wenn Produkte drin sind -> fertig, nie CSS anfassen (Hilfsfunktionen
+     dafuer liegen in src/jsonld.py, siehe auch fressnapf.py fuer einen
+     Shop mit anderer Verschachtelung)
   4. erst wenn nicht -> CSS-Selektoren (siehe demo_books.py)
 
 robots.txt-Stand: /shop/... ist erlaubt, nur /ov? und /detailedQuestion.htm
@@ -23,13 +25,13 @@ wir halten uns trotzdem daran.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from collections.abc import Iterator
 from typing import Any
 
 from src.crawlers.base import BaseCrawler
+from src.jsonld import find_by_type
 from src.models import Offer
 from src.parse import clean_title, parse_price, parse_unit
 
@@ -48,10 +50,6 @@ CATEGORIES = [
 ]
 
 MAX_PAGES = 5
-_LD_RE = re.compile(
-    r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
-    re.S | re.I,
-)
 _ID_RE = re.compile(r"/(\d{4,})(?:\?|$)")
 
 
@@ -74,7 +72,7 @@ class ZooplusCrawler(BaseCrawler):
                     log.warning("%s: Seite nicht erreichbar: %s", self.shop, url)
                     break
 
-                products = list(self._extract_products(html))
+                products = list(find_by_type(html, "Product"))
                 if not products:
                     log.info("%s: keine Produkte mehr auf %s", self.shop, url)
                     break
@@ -95,21 +93,6 @@ class ZooplusCrawler(BaseCrawler):
                 # Seite 1 aus - deshalb hier abbrechen statt endlos zu laufen.
                 if new_on_page == 0:
                     break
-
-    def _extract_products(self, html: str) -> Iterator[dict[str, Any]]:
-        """Alle schema.org/Product-Objekte aus dem JSON-LD ziehen.
-
-        Zooplus verschachtelt sie als:
-          {"mainEntity": {"@type": "ItemList",
-                          "itemListElement": [{"item": {...Product...}}]}}
-        """
-        for block in _LD_RE.findall(html):
-            try:
-                data = json.loads(block)
-            except json.JSONDecodeError:
-                log.debug("%s: JSON-LD nicht parsebar", self.shop)
-                continue
-            yield from _walk_products(data)
 
     def _to_offer(self, product: dict[str, Any]) -> Offer | None:
         try:
@@ -160,20 +143,3 @@ class ZooplusCrawler(BaseCrawler):
         except Exception:
             log.exception("%s: Produkt nicht konvertierbar", self.shop)
             return None
-
-
-def _walk_products(node: Any) -> Iterator[dict[str, Any]]:
-    """Rekursiv durch beliebig verschachteltes JSON-LD nach Products suchen.
-
-    Bewusst generisch: so funktioniert die Funktion auch, wenn Zooplus die
-    Verschachtelung aendert - oder wenn ihr sie fuer einen anderen Shop
-    wiederverwendet.
-    """
-    if isinstance(node, dict):
-        if node.get("@type") == "Product":
-            yield node
-        for value in node.values():
-            yield from _walk_products(value)
-    elif isinstance(node, list):
-        for item in node:
-            yield from _walk_products(item)
