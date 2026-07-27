@@ -34,6 +34,12 @@ an einen Kanal meldet.
 
 ## Aktueller Stand
 
-- `zooplus`: echter Crawler, laeuft (JSON-LD).
-- `fressnapf`: Stub mit Anleitung, `enabled = False`. Naechste Aufgabe.
+- `zooplus`: echter Crawler, laeuft (JSON-LD auf der Kategorieseite).
+- `fressnapf`: echter Crawler, laeuft (zweistufig: ItemList-JSON-LD auf der
+  Kategorieseite liefert Produkt-URLs, Preis kommt vom Product-JSON-LD der
+  einzelnen Produktseite - siehe Docstring in `src/crawlers/fressnapf.py`
+  fuer die Recherche dahinter. Deckt ca. 49 Produkte pro Kategorie ab,
+  keine JS-Pagination).
 - `demo_books`: Uebungs-Crawler gegen books.toscrape.com, nicht produktiv.
+- `src/jsonld.py`: gemeinsame JSON-LD-Hilfsfunktionen (von zooplus.py und
+  fressnapf.py genutzt) - fuer den naechsten Shop zuerst hier nachsehen.
