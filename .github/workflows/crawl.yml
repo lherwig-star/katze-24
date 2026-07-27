@@ -1,0 +1,72 @@
+name: Crawl
+
+# Taeglicher Crawl-Lauf in der Cloud - euer Mac muss dafuer nicht an sein.
+#
+# GitHub-Actions-Runner sind nach jedem Lauf wieder leer, deshalb wird die
+# SQLite-Datenbank (data/petdeals.db) am Ende jedes Laufs auf einen eigenen
+# Branch "data" committet - NICHT auf main, damit der PR-Schutz auf main
+# unberuehrt bleibt und Code-Historie/Preishistorie sauber getrennt sind.
+#
+# Preisdaten lokal abholen:
+#   git fetch origin data
+#   git show origin/data:data/petdeals.db > data/petdeals.db
+
+on:
+  schedule:
+    - cron: "0 6 * * *"  # taeglich 6 Uhr UTC (7 bzw. 8 Uhr deutscher Zeit)
+  workflow_dispatch: {}  # manueller Testlauf ueber den "Run workflow"-Button
+
+permissions:
+  contents: write
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - run: pip install -r requirements.txt
+
+      - name: Vorherige Preisdaten laden (falls vorhanden)
+        continue-on-error: true
+        run: |
+          git fetch origin data 2>/dev/null || true
+          git show origin/data:data/petdeals.db > data/petdeals.db 2>/dev/null \
+            && echo "Bestehende Preishistorie geladen" \
+            || echo "Noch keine Preishistorie vorhanden - erster Lauf"
+
+      - name: Crawlen
+        run: python -m src.main crawl
+
+      - name: Preisdaten auf data-Branch committen
+        run: |
+          mkdir -p /tmp/dbsave
+          cp data/petdeals.db /tmp/dbsave/petdeals.db
+          rm -rf data
+
+          git fetch origin data 2>/dev/null || true
+          if git show-ref --verify --quiet refs/remotes/origin/data; then
+            git checkout -B data origin/data
+          else
+            git checkout --orphan data
+            git rm -rf --cached . > /dev/null 2>&1 || true
+            git clean -fd > /dev/null 2>&1 || true
+          fi
+
+          mkdir -p data
+          cp /tmp/dbsave/petdeals.db data/petdeals.db
+
+          git config user.name "petdeals-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -f data/petdeals.db
+
+          if git diff --cached --quiet; then
+            echo "Keine neuen Preisdaten"
+          else
+            git commit -m "Preisdaten $(date -u +%Y-%m-%d)"
+            git push origin HEAD:data
+          fi

@@ -80,8 +80,25 @@ Rabatt von einem Fantasie-Streichpreis zu unterscheiden. Lasst den Crawler
 täglich laufen (siehe Cron/GitHub-Action unten), die Daten lassen sich nicht
 nachträglich erzeugen.
 
-### Täglich automatisch crawlen (Cron, lokal)
+### Täglich automatisch crawlen
 
+**Option A – in der Cloud (empfohlen, läuft ohne dass ein Rechner an sein muss):**
+`.github/workflows/crawl.yml` crawlt täglich um 6 Uhr UTC über GitHub Actions.
+Da GitHub-Actions-Runner nach jedem Lauf wieder leer sind, wird die Preis-
+datenbank (`data/petdeals.db`) am Ende jedes Laufs auf einen eigenen Branch
+**`data`** committet – bewusst nicht auf `main`, damit der PR-Schutz auf
+`main` unberührt bleibt und Code- und Preishistorie sauber getrennt sind.
+
+Manuell testen: auf GitHub unter *Actions → Crawl → Run workflow*.
+
+Aktuelle Preisdaten lokal abholen:
+```bash
+git fetch origin data
+git show origin/data:data/petdeals.db > data/petdeals.db
+python -m src.main stats   # zum Prüfen
+```
+
+**Option B – lokal per Cron (falls ihr die Cloud-Variante nicht wollt):**
 ```bash
 crontab -e
 # Zeile einfügen (crawlt jeden Tag um 8 Uhr):
