@@ -21,10 +21,32 @@ Faustregel fuer jeden neuen Shop, den ihr anbindet:
 robots.txt-Stand: /shop/... ist erlaubt, nur /ov? und /detailedQuestion.htm
 sind gesperrt. Crawl-delay 5s gilt laut robots.txt nur fuer bingbot & Co,
 wir halten uns trotzdem daran.
+
+RABATT-ERKENNUNG - ZWEITER ANLAUF (wichtige Korrektur nach Live-Test):
+Die Kategorieseite liefert im JSON-LD ein Feld "ListPrice" neben "SalePrice".
+Erster Versuch: das als Streichpreis genommen - Live-Test zeigte aber, dass
+das bei fast JEDEM Multipack gesetzt ist (29 von 30 Testprodukten!), weil es
+der staendige "Einzelpreis vs. Grosspackung"-Vergleich ist, kein zeitlich
+begrenzter Rabatt. Damit waere praktisch der ganze Katalog "reduziert".
+
+Die eigene Produktseite (nicht die Kategorieseite!) hat dagegen ein
+eigenstaendiges, selteneres Feld:
+    "priceSpecification": [
+        {"priceType": "https://schema.org/StrikethroughPrice", "price": 4.99},
+        {"priceType": "https://schema.org/SalePrice", "price": 4.24}
+    ]
+StrikethroughPrice taucht nur auf, wenn GERADE ein echter, zeitlich
+begrenzter Rabatt aktiv ist (getestet: baugleiches Produkt ohne aktuellen
+Rabatt hat in seinen anderen Varianten nur SalePrice, keine
+StrikethroughPrice). Deshalb zweistufig wie bei Fressnapf: Kategorieseite
+fuer die Grunddaten, zusaetzlich JEDE Produktseite fuer den echten
+Rabatt-Status. Kostet ca. 3x mehr Requests, ist dafuer nicht durch
+Mengenrabatt-Rauschen verfaelscht.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import re
 from collections.abc import Iterator
@@ -84,7 +106,7 @@ class ZooplusCrawler(BaseCrawler):
                         continue
                     seen.add(offer.uid)
                     new_on_page += 1
-                    yield offer
+                    yield self._enrich_with_discount(offer)
                     count += 1
                     if limit and count >= limit:
                         return
@@ -143,3 +165,69 @@ class ZooplusCrawler(BaseCrawler):
         except Exception:
             log.exception("%s: Produkt nicht konvertierbar", self.shop)
             return None
+
+    def _enrich_with_discount(self, offer: Offer) -> Offer:
+        """Produktseite abrufen und den ECHTEN aktuellen Preis + Rabatt-Status
+        uebernehmen. Noetig, weil die Kategorieseite manchmal noch den Preis
+        VOR einem gerade aktiven Rabatt zeigt (beobachtet: Kategorie zeigte
+        13,69 EUR, die Produktseite fuer dieselbe Variante hatte SalePrice
+        12,32 EUR + StrikethroughPrice 13,69 EUR - die Kategorieseite haette
+        uns also faelschlich "kein Rabatt" vorgegaukelt). Die Produktseite
+        ist die naehere Quelle zur Kasse und gilt deshalb als massgeblich.
+
+        Liefert bei Fehlern das unveraenderte Angebot zurueck.
+        """
+        try:
+            html = self.fetcher.get(offer.url).text
+        except RuntimeError:
+            log.warning("%s: Produktseite fuer Rabatt-Check nicht erreichbar: %s",
+                        self.shop, offer.url)
+            return offer
+
+        prices = _extract_variant_prices(html, offer.url)
+        if prices is None:
+            return offer
+        sale_cents, strikethrough_cents = prices
+
+        updates: dict[str, Any] = {}
+        if sale_cents:
+            updates["price_cents"] = sale_cents
+        # StrikethroughPrice steht auch bei NICHT reduzierten Varianten im
+        # Feld, dann aber gleich dem SalePrice - erst ein echter Unterschied
+        # zaehlt als Rabatt.
+        if strikethrough_cents and sale_cents and strikethrough_cents > sale_cents:
+            updates["list_price_cents"] = strikethrough_cents
+            updates["is_marked_down"] = True
+
+        return dataclasses.replace(offer, **updates) if updates else offer
+
+
+def _extract_variant_prices(
+    html: str, target_url: str
+) -> tuple[int | None, int | None] | None:
+    """(SalePrice, StrikethroughPrice) in Cent fuer genau die Variante, die
+    zu target_url passt (eine Produktseite listet mehrere Varianten mit je
+    eigener offers.url). None, wenn die Variante nicht gefunden wurde."""
+    for product in find_by_type(html, "Product"):
+        offers = product.get("offers") or {}
+        if isinstance(offers, list):
+            offers = offers[0] if offers else {}
+        if offers.get("url") != target_url:
+            continue
+
+        sale_cents: int | None = None
+        strikethrough_cents: int | None = None
+        specs = offers.get("priceSpecification") or []
+        if isinstance(specs, dict):
+            specs = [specs]
+        for spec in specs:
+            if not isinstance(spec, dict):
+                continue
+            price_type = str(spec.get("priceType", ""))
+            price = parse_price(str(spec.get("price", "")))
+            if "StrikethroughPrice" in price_type:
+                strikethrough_cents = price
+            elif "SalePrice" in price_type:
+                sale_cents = price
+        return sale_cents, strikethrough_cents
+    return None
