@@ -55,3 +55,36 @@ def _walk(node: Any, type_name: str) -> Iterator[dict[str, Any]]:
     elif isinstance(node, list):
         for item in node:
             yield from _walk(item, type_name)
+
+
+def find_list_price(offers: dict[str, Any] | list[Any]) -> str | None:
+    """Streichpreis ("statt"-Preis) aus einem JSON-LD offers-Objekt lesen.
+
+    schema.org sieht dafuer priceSpecification mit priceType
+    StrikethroughPrice/ListPrice vor (Google-Rich-Snippet-Konvention fuer
+    Sale-Preise). Nicht gegen echte Zooplus-/Fressnapf-Seiten getestet -
+    diese Sandbox bekommt von beiden Shops ein 403 (Bot-Schutz), auch ueber
+    WebFetch. Bewusst defensiv: liefert None statt zu crashen, wenn das
+    Feld fehlt oder anders verschachtelt ist als erwartet - der naechste
+    echte Crawl-Lauf zeigt, ob es bei diesen Shops tatsaechlich vorkommt.
+    """
+    if isinstance(offers, list):
+        offers = offers[0] if offers else {}
+    if not isinstance(offers, dict):
+        return None
+
+    specs = offers.get("priceSpecification")
+    if isinstance(specs, dict):
+        specs = [specs]
+    if not isinstance(specs, list):
+        return None
+
+    for spec in specs:
+        if not isinstance(spec, dict):
+            continue
+        price_type = str(spec.get("priceType", ""))
+        if "StrikethroughPrice" in price_type or "ListPrice" in price_type:
+            price = spec.get("price")
+            if price is not None:
+                return str(price)
+    return None

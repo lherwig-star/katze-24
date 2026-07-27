@@ -31,7 +31,11 @@ HISTORY_DAYS = 90
 
 # Schwellen
 MIN_DISCOUNT_PCT = 15.0  # gegen eigene Historie
-MIN_LIST_DISCOUNT_PCT = 35.0  # gegen Streichpreis - hoeher, weil unzuverlaessig
+MIN_LIST_DISCOUNT_PCT = 10.0  # gegen Streichpreis - bewusst niedrig gehalten:
+# der Anspruch hier ist nicht "echter Rabatt", sondern "vom Shop selbst als
+# reduziert markiert" (Streichpreis > Preis). Ob das ein realer Tiefstpreis
+# oder reine Kaufanreiz-Optik ist, wird an dieser Stelle nicht bewertet -
+# das uebernimmt der History-Pfad oben, sobald genug eigene Daten da sind.
 
 
 def find_deals(

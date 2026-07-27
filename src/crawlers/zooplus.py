@@ -31,7 +31,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from src.crawlers.base import BaseCrawler
-from src.jsonld import find_by_type
+from src.jsonld import find_by_type, find_list_price
 from src.models import Offer
 from src.parse import clean_title, parse_price, parse_unit
 
@@ -110,6 +110,9 @@ class ZooplusCrawler(BaseCrawler):
             if price_cents is None:
                 return None
 
+            list_price_raw = find_list_price(offers)
+            list_price_cents = parse_price(list_price_raw) if list_price_raw else None
+
             match = _ID_RE.search(url.split("?")[0])
             variant = re.search(r"activeVariant=([\d.]+)", url)
             product_id = variant.group(1) if variant else (
@@ -133,6 +136,7 @@ class ZooplusCrawler(BaseCrawler):
                 product_id=str(product_id),
                 title=title,
                 price_cents=price_cents,
+                list_price_cents=list_price_cents,
                 url=url if url.startswith("http") else BASE + url,
                 brand=brand_name,
                 image_url=image,

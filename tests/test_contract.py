@@ -83,3 +83,16 @@ def test_gefaketer_streichpreis_wird_abgewertet(tmp_path):
     assert "Streichpreis" in deals[0].reason
     assert deals[0].score < deals[0].discount_pct
     store.close()
+
+
+def test_kleiner_streichpreis_rabatt_zaehlt(tmp_path):
+    """Auch ein moderater, vom Shop markierter Rabatt (15%) muss zaehlen -
+    die Schwelle ist bewusst auf 10% gesenkt, weil hier nicht bewertet
+    wird, ob der Rabatt "echt" ist, sondern nur, ob der Shop ihn markiert."""
+    store = Store(tmp_path / "test.db")
+    offer = Offer(shop="test", product_id="15", title="Kleiner Rabatt 1 kg",
+                  price_cents=850, list_price_cents=1000,
+                  url="https://example.com/p/15")
+    deals = find_deals(store, [offer])
+    assert len(deals) == 1
+    store.close()

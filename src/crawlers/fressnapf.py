@@ -42,7 +42,7 @@ import re
 from collections.abc import Iterator
 
 from src.crawlers.base import BaseCrawler
-from src.jsonld import find_by_type
+from src.jsonld import find_by_type, find_list_price
 from src.models import Offer
 from src.parse import clean_title, parse_price, parse_unit
 
@@ -118,6 +118,9 @@ class FressnapfCrawler(BaseCrawler):
             if not (title and price_cents):
                 return None
 
+            list_price_raw = find_list_price(offers)
+            list_price_cents = parse_price(list_price_raw) if list_price_raw else None
+
             sku = product.get("sku")
             match = _ID_RE.search(url.rstrip("/"))
             product_id = str(sku) if sku else (
@@ -139,6 +142,7 @@ class FressnapfCrawler(BaseCrawler):
                 product_id=product_id,
                 title=title,
                 price_cents=price_cents,
+                list_price_cents=list_price_cents,
                 url=url,
                 brand=brand_name,
                 image_url=image,
