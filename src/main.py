@@ -15,11 +15,12 @@ Beispiele:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import logging
 import sys
 
 from src.crawlers import get_crawlers
-from src.crawlers.base import REGISTRY
+from src.crawlers.base import BaseCrawler, REGISTRY
 from src.dealengine import MIN_DISCOUNT_PCT, find_deals
 from src.notifier import format_deal, get_notifier
 from src.storage import Store
@@ -52,22 +53,60 @@ def cmd_list(args: argparse.Namespace) -> None:
         print(f"{shop:<15} {status:<12} {cls.__name__}")
 
 
+def _run_one(crawler: BaseCrawler, limit: int | None) -> list:
+    """Ein einzelner Crawler-Lauf, Fehler abfangen statt den ganzen Lauf zu killen."""
+    try:
+        return crawler.run(limit=limit)
+    except NotImplementedError as exc:
+        print(f"  {crawler.shop}: {exc}")
+        return []
+    except Exception:
+        logging.exception("%s ist abgestuerzt", crawler.shop)
+        return []
+
+
+def _crawl_all(
+    crawlers: list[BaseCrawler], limit: int | None
+) -> dict[BaseCrawler, list]:
+    """Alle Crawler nebenlaeufig laufen lassen.
+
+    Jeder Crawler hat seinen EIGENEN Fetcher mit eigener Rate-Limit-Pause
+    (siehe base.py: self.fetcher = Fetcher(delay=self.delay)) - "nebenlaeufig"
+    heisst hier also nicht, dass ein einzelner Shop haeufiger angefragt wird
+    (das waere genau das Rate-Limiting umgehen, was CLAUDE.md verbietet),
+    sondern nur, dass sich die Wartezeiten VERSCHIEDENER Shops ueberlappen
+    statt sich zu addieren. Bisher liefen Zooplus und Fressnapf nacheinander
+    in einem Prozess, obwohl nichts sie aneinander koppelt.
+
+    Threads statt asyncio, weil das I/O-lastig ist (requests + time.sleep
+    geben das GIL frei) und die Crawler dafuer nicht umgebaut werden mussten.
+    """
+    results: dict[BaseCrawler, list] = {}
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=max(len(crawlers), 1)
+    ) as pool:
+        future_to_crawler = {
+            pool.submit(_run_one, c, limit): c for c in crawlers
+        }
+        for future in concurrent.futures.as_completed(future_to_crawler):
+            crawler = future_to_crawler[future]
+            results[crawler] = future.result()
+    return results
+
+
 def cmd_crawl(args: argparse.Namespace) -> None:
     with Store() as store:
         total = 0
-        for cls in get_crawlers(args.shop):
-            crawler = cls()
-            try:
-                offers = crawler.run(limit=args.limit)
-            except NotImplementedError as exc:
-                print(f"  {cls.shop}: {exc}")
-                continue
-            except Exception:
-                logging.exception("%s ist abgestuerzt", cls.shop)
-                continue
+        crawlers = [cls() for cls in get_crawlers(args.shop)]
+        results = _crawl_all(crawlers, args.limit)
+
+        # store.save_offers() bleibt einfach-threaded (im Hauptthread, hier),
+        # damit es nie zwei gleichzeitige SQLite-Schreibzugriffe gibt.
+        for crawler in crawlers:
+            offers = results[crawler]
             saved = store.save_offers(offers)
             total += saved
-            print(f"  {cls.shop:<15} {saved} Angebote gespeichert")
+            print(f"  {crawler.shop:<15} {saved} Angebote gespeichert")
         print(f"\nGesamt: {total}")
 
 

@@ -61,9 +61,18 @@ log = logging.getLogger(__name__)
 
 BASE = "https://www.zooplus.de"
 
-# Startpunkte. Hier koennt ihr beliebig erweitern - Katzenfutter, Zubehoer,
-# Spielzeug. Die URLs findet ihr, indem ihr auf zooplus.de durch die
-# Kategorien klickt und den Pfad kopiert.
+# Zurueck auf die normalen Kategorien. Kurzer Exkurs zur gefilterten
+# Rabatt-Suche (/search/results?...&filters=...price_reduced): ein echter
+# Testlauf (siehe Chat-Verlauf) hat gezeigt, dass diese Seite zwar
+# erreichbar ist, aber KEIN Product-JSON-LD im HTML mitliefert (0 Treffer)
+# - vermutlich eine reine JS-Facettensuche ohne Server-Rendering, anders
+# als /shop/..., das nachweislich SEO-gerendert ist. Zooplus war im
+# urspruenglichen Vollkatalog-Crawl mit ~2 Minuten ohnehin nie der
+# Flaschenhals (das war Fressnapf mit seinen Einzelabrufen pro Produkt) -
+# den funktionierenden Teil aufzugeben, um eine kaputte Seite zu testen,
+# war die falsche Abwaegung. Dank paralleler Ausfuehrung (main.py) passt
+# Zooplus' Laufzeit ohnehin locker in Fressnapfs laengeres Zeitbudget, die
+# Gesamtlaufzeit steigt durch die volle Kategorien-Liste hier kaum.
 CATEGORIES = [
     "/shop/katzen/katzenfutter_dose",
     "/shop/katzen/katzenfutter_trockenfutter",
@@ -73,6 +82,22 @@ CATEGORIES = [
 
 MAX_PAGES = 5
 _ID_RE = re.compile(r"/(\d{4,})(?:\?|$)")
+
+
+def _page_url(category: str, page: int) -> str:
+    """Kategorie-URL um den Seiten-Parameter ergaenzen.
+
+    Die meisten Eintraege in CATEGORIES sind einfache Pfade ohne
+    Query-String ("/shop/..."), aber gefilterte Seiten wie eine
+    Rabatt-Uebersicht (".../search/results?q=...&filters=...") haben
+    schon eines. Ein hartcodiertes "?p=" wuerde dort ein zweites "?" in
+    die URL setzen und sie kaputt machen - deshalb hier "&p=" anhaengen,
+    wenn schon ein "?" vorhanden ist.
+    """
+    if page <= 1:
+        return f"{BASE}{category}"
+    sep = "&" if "?" in category else "?"
+    return f"{BASE}{category}{sep}p={page}"
 
 
 class ZooplusCrawler(BaseCrawler):
@@ -85,7 +110,7 @@ class ZooplusCrawler(BaseCrawler):
 
         for category in CATEGORIES:
             for page in range(1, MAX_PAGES + 1):
-                url = f"{BASE}{category}" + (f"?p={page}" if page > 1 else "")
+                url = _page_url(category, page)
                 log.info("%s: %s", self.shop, url)
 
                 try:
@@ -131,6 +156,15 @@ class ZooplusCrawler(BaseCrawler):
             price_cents = parse_price(str(price_raw))
             if price_cents is None:
                 return None
+
+            # KEIN list_price_cents aus der Kategorieseite: ein echter
+            # Testlauf hat gezeigt, dass das dortige Feld bei 674 von 960
+            # Produkten gesetzt ist - das ist die dauerhafte UVP, keine
+            # zeitlich begrenzte Rabattaktion (Rabatt lag bei 35-43%, also
+            # ueber jeder sinnvollen Schwelle). Der echte Rabatt-Status kommt
+            # stattdessen aus _enrich_with_discount() weiter unten, das dafuer
+            # extra die Produktseite abruft (siehe Docstring oben,
+            # "RABATT-ERKENNUNG - ZWEITER ANLAUF").
 
             match = _ID_RE.search(url.split("?")[0])
             variant = re.search(r"activeVariant=([\d.]+)", url)
