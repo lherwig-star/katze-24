@@ -31,7 +31,7 @@ from collections.abc import Iterator
 from typing import Any
 
 from src.crawlers.base import BaseCrawler
-from src.jsonld import find_by_type, find_list_price
+from src.jsonld import find_by_type
 from src.models import Offer
 from src.parse import clean_title, parse_price, parse_unit
 
@@ -135,8 +135,18 @@ class ZooplusCrawler(BaseCrawler):
             if price_cents is None:
                 return None
 
-            list_price_raw = find_list_price(offers)
-            list_price_cents = parse_price(list_price_raw) if list_price_raw else None
+            # KEIN list_price_cents bei Zooplus (mehr): ein echter Testlauf
+            # hat gezeigt, dass find_list_price() hier zwar ein Feld findet
+            # (bei 674 von 960 Produkten!), das ist aber die dauerhafte UVP,
+            # keine zeitlich begrenzte Rabattaktion - Rabatt lag bei 35-43%,
+            # also ueber jeder sinnvollen Schwelle, waere also faelschlich
+            # als "Deal" durchgegangen. Zooplus scheint dieses Feld einfach
+            # immer zu befuellen. list_price_cents soll im ganzen System
+            # "echter Referenzpreis fuer einen Deal" bedeuten - hier waere
+            # das irrefuehrend. Echte Zooplus-Deals kommen stattdessen ueber
+            # den "eigene Historie"-Pfad in dealengine.py, sobald genug
+            # taegliche Preispunkte da sind (der volle Katalog-Crawl laeuft
+            # ja wieder, siehe Chat-Verlauf).
 
             match = _ID_RE.search(url.split("?")[0])
             variant = re.search(r"activeVariant=([\d.]+)", url)
@@ -161,7 +171,6 @@ class ZooplusCrawler(BaseCrawler):
                 product_id=str(product_id),
                 title=title,
                 price_cents=price_cents,
-                list_price_cents=list_price_cents,
                 url=url if url.startswith("http") else BASE + url,
                 brand=brand_name,
                 image_url=image,
