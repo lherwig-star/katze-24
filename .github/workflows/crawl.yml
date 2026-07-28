@@ -14,7 +14,12 @@ name: Crawl
 on:
   schedule:
     - cron: "0 6 * * *"  # taeglich 6 Uhr UTC (7 bzw. 8 Uhr deutscher Zeit)
-  workflow_dispatch: {}  # manueller Testlauf ueber den "Run workflow"-Button
+  workflow_dispatch:  # manueller Testlauf ueber den "Run workflow"-Button
+    inputs:
+      limit:
+        description: "Nur zum Testen: max. Angebote pro Shop (leer = voller Lauf, wie der taegliche Cron)"
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -40,7 +45,12 @@ jobs:
             || echo "Noch keine Preishistorie vorhanden - erster Lauf"
 
       - name: Crawlen
-        run: python -m src.main crawl
+        run: |
+          if [ -n "${{ github.event.inputs.limit }}" ]; then
+            python -m src.main crawl --limit "${{ github.event.inputs.limit }}"
+          else
+            python -m src.main crawl
+          fi
 
       - name: Preisdaten auf data-Branch committen
         run: |
