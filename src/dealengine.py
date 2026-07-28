@@ -1,23 +1,27 @@
 """Entscheidet, was ein Deal ist.
 
-Das ist der intellektuell interessanteste Teil des Projekts - viel mehr als
-das Crawlen. Kernproblem:
+FRUEHERE VERSION dieser Datei hat einen Deal ausschliesslich gegen die
+EIGENE gemessene Preishistorie erkannt (Streichpreise der Shops sind oft
+Mondpreise - "statt 39,99 EUR nur 19,99!" heisst meistens, dass das Produkt
+seit zwei Jahren 19,99 kostet).
 
-  Der Streichpreis der Shops luegt fast immer. "Statt 39,99 EUR nur 19,99!"
-  heisst meistens, dass das Produkt seit zwei Jahren 19,99 kostet.
+Das ist inhaltlich weiterhin richtig, trifft aber nicht, was die Nutzer
+im Kanal eigentlich wollen: Denen ist es egal, ob der Streichpreis fair
+ist - die wollen einen sichtbaren Rabatt sehen und zugreifen. Ausserdem
+braucht die Historie mehrere Wochen, bis sie ueberhaupt etwas findet.
 
-Deshalb: Ein Deal ist ein Preis, der gegen die EIGENE gemessene Historie
-niedrig ist. Nicht gegen die UVP.
-
-Konsequenz: In den ersten Wochen findet ihr fast nichts, weil die Historie
-fehlt. Das ist richtig so und kein Bug. Lasst den Crawler trotzdem taeglich
-laufen - die Daten koennt ihr nicht nachtraeglich erzeugen.
+DESHALB JETZT: Ausschlaggebend ist, ob der SHOP SELBST das Produkt als
+reduziert markiert (siehe Offer.list_price_cents / Offer.is_marked_down,
+kommt strukturiert aus dem jeweiligen Crawler - z.B. Zooplus' eigenes
+schema.org/ListPrice-Feld oder Fressnapfs Sale-Kategorie). Die eigene
+Preishistorie wird nicht mehr zur Bedingung, sondern nur noch als
+Zusatz-Info in der Nachricht genutzt ("...und das ist sogar Tiefstpreis
+der letzten 30 Tage").
 """
 
 from __future__ import annotations
 
 import logging
-import statistics
 from collections.abc import Iterable
 
 from src.models import Deal, Offer
@@ -25,17 +29,12 @@ from src.storage import Store
 
 log = logging.getLogger(__name__)
 
-# Ab wie vielen Tagen Historie vertrauen wir unseren eigenen Daten?
-MIN_HISTORY_POINTS = 7
 HISTORY_DAYS = 90
+MIN_HISTORY_POINTS = 7
 
-# Schwellen
-MIN_DISCOUNT_PCT = 15.0  # gegen eigene Historie
-MIN_LIST_DISCOUNT_PCT = 10.0  # gegen Streichpreis - bewusst niedrig gehalten:
-# der Anspruch hier ist nicht "echter Rabatt", sondern "vom Shop selbst als
-# reduziert markiert" (Streichpreis > Preis). Ob das ein realer Tiefstpreis
-# oder reine Kaufanreiz-Optik ist, wird an dieser Stelle nicht bewertet -
-# das uebernimmt der History-Pfad oben, sobald genug eigene Daten da sind.
+# Nur um Rundungsrauschen rauszufiltern (z.B. 19,99 EUR "statt" 20,00 EUR) -
+# nicht um den Rabatt in Frage zu stellen, das macht bewusst der Shop selbst.
+MIN_DISCOUNT_PCT = 5.0
 
 
 def find_deals(
@@ -56,54 +55,49 @@ def find_deals(
 
 
 def evaluate(store: Store, offer: Offer, min_discount: float) -> Deal | None:
-    """Ein einzelnes Angebot bewerten. None = kein Deal."""
-    history = store.price_history(offer.uid, days=HISTORY_DAYS)
+    """Ein einzelnes Angebot bewerten. None = kein Deal.
 
-    if len(history) >= MIN_HISTORY_POINTS:
-        return _evaluate_against_history(offer, history, min_discount)
+    Voraussetzung ist IMMER eine Markierung durch den Shop selbst - eine
+    reine Preisschwankung in unserer eigenen Historie reicht nicht (mehr).
+    """
+    has_list_price = bool(offer.list_price_cents and offer.list_price_cents > offer.price_cents)
+    if not has_list_price and not offer.is_marked_down:
+        return None
 
-    # Noch zu wenig eigene Daten -> notgedrungen der Streichpreis,
-    # aber mit deutlich strengerer Schwelle und ehrlicher Begruendung.
-    if offer.list_price_cents and offer.list_price_cents > offer.price_cents:
+    if has_list_price:
         discount = _pct(offer.price_cents, offer.list_price_cents)
-        if discount >= MIN_LIST_DISCOUNT_PCT:
-            return Deal(
-                offer=offer,
-                ref_price_cents=offer.list_price_cents,
-                discount_pct=discount,
-                reason=f"{discount:.0f}% unter Streichpreis (noch keine eigene Historie)",
-                score=discount * 0.5,  # abgewertet, weil unsicher
-            )
-    return None
-
-
-def _evaluate_against_history(
-    offer: Offer, history: list[int], min_discount: float
-) -> Deal | None:
-    reference = int(statistics.median(history))
-    if reference <= offer.price_cents:
-        return None
-
-    discount = _pct(offer.price_cents, reference)
-    if discount < min_discount:
-        return None
-
-    all_time_low = offer.price_cents < min(history)
-    score = discount + (15.0 if all_time_low else 0.0)
-
-    if all_time_low:
-        reason = f"Tiefstpreis seit {len(history)} Tagen ({discount:.0f}% unter dem Ueblichen)"
+        if discount < min_discount:
+            return None
+        ref_price = offer.list_price_cents
+        reason = f"{discount:.0f}% reduziert (statt {_eur(offer.list_price_cents)})"
     else:
-        reason = f"{discount:.0f}% unter dem ueblichen Preis ({_eur(reference)})"
+        # is_marked_down ohne exakten Streichpreis, z.B. Fressnapf-Sale-
+        # Kategorie: wir wissen "reduziert", aber nicht um wieviel.
+        discount = 0.0
+        ref_price = offer.price_cents
+        reason = "vom Shop als reduziert markiert"
 
+    all_time_low, history_days = _check_history(store, offer)
+    if all_time_low:
+        reason += f" - zugleich Tiefstpreis der letzten {history_days} Tage"
+
+    score = discount + (15.0 if all_time_low else 0.0)
     return Deal(
         offer=offer,
-        ref_price_cents=reference,
+        ref_price_cents=ref_price,
         discount_pct=discount,
         reason=reason,
         score=score,
         is_all_time_low=all_time_low,
     )
+
+
+def _check_history(store: Store, offer: Offer) -> tuple[bool, int]:
+    """Nur noch Zusatz-Info, kein Gate mehr: ist der Rabatt sogar ein Tiefstpreis?"""
+    history = store.price_history(offer.uid, days=HISTORY_DAYS)
+    if len(history) < MIN_HISTORY_POINTS:
+        return False, 0
+    return offer.price_cents <= min(history), len(history)
 
 
 def _pct(price: int, reference: int) -> float:

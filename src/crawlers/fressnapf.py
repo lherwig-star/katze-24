@@ -33,6 +33,13 @@ GRENZE: Kein ?page=2-Parameter aendert die SSR-Liste - sie ist fix auf die
 ersten ~49 Produkte pro Kategorie begrenzt (der Rest kommt nur per JS-
 Pagination, die wir nicht mitmachen). Fuer mehr Abdeckung: weitere
 Unterkategorien in CATEGORIES ergaenzen, z.B. nach Marke gefiltert.
+
+RABATT-ERKENNUNG: Anders als Zooplus hat Fressnapf keinen Streichpreis im
+Produkt-JSON-LD. Es gibt aber eine eigene Sale-Kategorie (/c/katze/sale/),
+in der der Shop selbst festlegt, was reduziert ist - genau das SALE_CATEGORY
+liefert, mit is_marked_down=True markiert (siehe dealengine.py). Die
+Sale-Kategorie wird bewusst ZUERST gecrawlt, damit ein Produkt, das in
+beiden Listen auftaucht, seine Markierung behaelt (Dedup ueber `seen`).
 """
 
 from __future__ import annotations
@@ -42,7 +49,7 @@ import re
 from collections.abc import Iterator
 
 from src.crawlers.base import BaseCrawler
-from src.jsonld import find_by_type, find_list_price
+from src.jsonld import find_by_type
 from src.models import Offer
 from src.parse import clean_title, parse_price, parse_unit
 
@@ -50,26 +57,12 @@ log = logging.getLogger(__name__)
 
 BASE = "https://www.fressnapf.de"
 
-# Bewusst NUR die Sale-/Angebotsseite, keine normalen Kategorien mehr -
-# der Crawler soll ausschliesslich das durchsuchen, was Fressnapf selbst
-# als reduziert markiert (siehe Chat-Entscheidung). Konsequenz: keine
-# Preishistorie mehr fuer Produkte ausserhalb dieser Seite, der "eigene
-# Historie"-Pfad in dealengine.py greift dadurch seltener - der Fallback
-# gegen offer.list_price_cents traegt jetzt die Hauptlast.
-#
-# ACHTUNG, zwei offene Punkte (siehe Chat-Verlauf):
-#   1. robots.txt ist bisher nur fuer /c/... und /p/... geprueft (siehe
-#      Recherche oben) - /aktionen-angebote/... ist ein neuer, noch nicht
-#      kontrollierter Pfad. Vor dem produktiven Einsatz auf
-#      https://www.fressnapf.de/robots.txt nachsehen (von dieser Sandbox
-#      aus nicht moeglich, Netzwerksperre auf fressnapf.de).
-#   2. Unklar, ob diese Seite dieselbe ItemList-JSON-LD-Struktur liefert
-#      wie /c/... (SSR fuer SEO) oder eine reine JS-Facettensuche ist, die
-#      serverseitig nichts mitliefert. find_by_type() liefert einfach
-#      nichts, wenn nicht - kein Absturz, aber ein echter Testlauf muss
-#      das zeigen.
+SALE_CATEGORY = "/c/katze/sale/"
+
 CATEGORIES = [
-    "/aktionen-angebote/sale/?q=:savingsRelative:badgesFacet:discount:badgesFacet:deal:badgesFacet:discount:badgesFacet:deal:category:cat",
+    "/c/katze/katzenfutter/",
+    "/c/katze/katzenstreu/",
+    "/c/katze/katzenspielzeug/",
 ]
 
 _ID_RE = re.compile(r"-(\d+)/?$")
@@ -83,9 +76,13 @@ class FressnapfCrawler(BaseCrawler):
         count = 0
         seen: set[str] = set()
 
-        for category in CATEGORIES:
+        # Sale-Kategorie zuerst, damit ihre is_marked_down=True-Markierung
+        # gewinnt, falls ein Produkt auch in einer normalen Kategorie steht.
+        categories = [(SALE_CATEGORY, True)] + [(c, False) for c in CATEGORIES]
+
+        for category, is_sale in categories:
             url = f"{BASE}{category}"
-            log.info("%s: Kategorie %s", self.shop, url)
+            log.info("%s: Kategorie %s%s", self.shop, url, " (Sale)" if is_sale else "")
             try:
                 html = self.fetcher.get(url).text
             except RuntimeError:
@@ -103,7 +100,7 @@ class FressnapfCrawler(BaseCrawler):
                     continue
                 seen.add(product_url)
 
-                offer = self._fetch_product(product_url)
+                offer = self._fetch_product(product_url, is_marked_down=is_sale)
                 if offer is None:
                     continue
                 yield offer
@@ -111,7 +108,7 @@ class FressnapfCrawler(BaseCrawler):
                 if limit and count >= limit:
                     return
 
-    def _fetch_product(self, url: str) -> Offer | None:
+    def _fetch_product(self, url: str, is_marked_down: bool = False) -> Offer | None:
         try:
             html = self.fetcher.get(url).text
         except RuntimeError:
@@ -119,11 +116,11 @@ class FressnapfCrawler(BaseCrawler):
             return None
 
         for product in find_by_type(html, "Product"):
-            return self._to_offer(product, url)
+            return self._to_offer(product, url, is_marked_down)
         log.debug("%s: kein Product-JSON-LD auf %s", self.shop, url)
         return None
 
-    def _to_offer(self, product: dict, url: str) -> Offer | None:
+    def _to_offer(self, product: dict, url: str, is_marked_down: bool = False) -> Offer | None:
         try:
             offers = product.get("offers") or {}
             if isinstance(offers, list):
@@ -133,9 +130,6 @@ class FressnapfCrawler(BaseCrawler):
             price_cents = parse_price(str(offers.get("price", "")))
             if not (title and price_cents):
                 return None
-
-            list_price_raw = find_list_price(offers)
-            list_price_cents = parse_price(list_price_raw) if list_price_raw else None
 
             sku = product.get("sku")
             match = _ID_RE.search(url.rstrip("/"))
@@ -158,9 +152,9 @@ class FressnapfCrawler(BaseCrawler):
                 product_id=product_id,
                 title=title,
                 price_cents=price_cents,
-                list_price_cents=list_price_cents,
                 url=url,
                 brand=brand_name,
+                is_marked_down=is_marked_down,
                 image_url=image,
                 available="instock" in availability.replace("_", ""),
                 unit_amount=amount_unit[0] if amount_unit else None,

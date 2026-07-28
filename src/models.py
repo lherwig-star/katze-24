@@ -32,7 +32,11 @@ class Offer:
     url: str
 
     brand: str | None = None
-    list_price_cents: int | None = None  # Streichpreis / UVP, oft geschoent
+    list_price_cents: int | None = None  # Streichpreis, den der SHOP selbst
+    # angibt (z.B. schema.org/ListPrice) - anders als eine UVP, die der Shop
+    # nur behaupten koennte, ist das ein strukturiertes Feld des Shops selbst.
+    is_marked_down: bool = False  # Shop markiert es als reduziert, aber ohne
+    # exakten Streichpreis (z.B. Zugehoerigkeit zu einer Sale-Kategorie).
     image_url: str | None = None
     unit_amount: float | None = None  # z.B. 1.02 (fuer 12 x 85 g)
     unit: str | None = None  # "kg" | "l" | "stk"

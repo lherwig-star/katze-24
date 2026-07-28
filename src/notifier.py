@@ -51,8 +51,13 @@ def format_deal(deal: Deal) -> str:
     lines = ["Werbung", "", f"🔥 {o.title}"]
 
     price = _eur(o.price_cents)
-    ref = _eur(deal.ref_price_cents)
-    lines.append(f"{price}  (statt {ref})  −{deal.discount_pct:.0f}%")
+    if deal.discount_pct > 0:
+        # kein exakter Streichpreis bekannt (z.B. reine Sale-Kategorie-
+        # Markierung ohne Zahl) -> keine erfundene Prozentangabe zeigen
+        ref = _eur(deal.ref_price_cents)
+        lines.append(f"{price}  (statt {ref})  −{deal.discount_pct:.0f}%")
+    else:
+        lines.append(price)
 
     if o.price_per_unit_cents and o.unit:
         lines.append(f"Grundpreis: {_eur(round(o.price_per_unit_cents))}/{o.unit}")

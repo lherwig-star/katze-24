@@ -47,8 +47,9 @@ def _offer(price: int) -> Offer:
                  unit_amount=1.0, unit="kg")
 
 
-def test_deal_erkennung_gegen_historie(tmp_path):
-    """Preis faellt von konstant 10 EUR auf 7 EUR -> muss ein Deal sein."""
+def test_kein_deal_ohne_shop_markierung(tmp_path):
+    """Reiner Preisverfall in unserer eigenen Historie reicht NICHT mehr -
+    ausschlaggebend ist, ob der Shop selbst einen Rabatt markiert hat."""
     store = Store(tmp_path / "test.db")
     today = datetime.now(timezone.utc)
 
@@ -58,41 +59,53 @@ def test_deal_erkennung_gegen_historie(tmp_path):
                      seen_at=today - timedelta(days=days_ago))
         store.save_offers([past])
 
-    deals = find_deals(store, [_offer(700)])
-    assert len(deals) == 1
-    assert deals[0].is_all_time_low
-    assert deals[0].discount_pct == pytest.approx(30.0)
-    store.close()
-
-
-def test_kein_deal_ohne_historie(tmp_path):
-    """Ohne Historie und ohne Streichpreis darf nichts gemeldet werden."""
-    store = Store(tmp_path / "test.db")
     assert find_deals(store, [_offer(700)]) == []
     store.close()
 
 
-def test_gefaketer_streichpreis_wird_abgewertet(tmp_path):
-    """Streichpreis-Deals bekommen einen niedrigeren Score als echte."""
+def test_deal_mit_streichpreis_vom_shop(tmp_path):
+    """Der Shop selbst gibt einen Streichpreis an -> das ist der Deal."""
     store = Store(tmp_path / "test.db")
-    offer = Offer(shop="test", product_id="99", title="Fake 1 kg",
+    offer = Offer(shop="test", product_id="99", title="Futter 1 kg",
                   price_cents=1999, list_price_cents=3999,
                   url="https://example.com/p/99")
     deals = find_deals(store, [offer])
     assert len(deals) == 1
-    assert "Streichpreis" in deals[0].reason
-    assert deals[0].score < deals[0].discount_pct
+    assert deals[0].discount_pct == pytest.approx(50.0, abs=0.1)
+    assert "reduziert" in deals[0].reason
     store.close()
 
 
-def test_kleiner_streichpreis_rabatt_zaehlt(tmp_path):
-    """Auch ein moderater, vom Shop markierter Rabatt (15%) muss zaehlen -
-    die Schwelle ist bewusst auf 10% gesenkt, weil hier nicht bewertet
-    wird, ob der Rabatt "echt" ist, sondern nur, ob der Shop ihn markiert."""
+def test_deal_ueber_sale_markierung_ohne_zahl(tmp_path):
+    """Fressnapf-Sale-Kategorie o.ae.: kein Streichpreis, aber is_marked_down."""
     store = Store(tmp_path / "test.db")
-    offer = Offer(shop="test", product_id="15", title="Kleiner Rabatt 1 kg",
-                  price_cents=850, list_price_cents=1000,
-                  url="https://example.com/p/15")
+    offer = Offer(shop="test", product_id="100", title="Spielzeug",
+                  price_cents=999, is_marked_down=True,
+                  url="https://example.com/p/100")
     deals = find_deals(store, [offer])
     assert len(deals) == 1
+    assert deals[0].discount_pct == 0.0
+    assert "reduziert markiert" in deals[0].reason
+    store.close()
+
+
+def test_historie_ist_nur_noch_zusatzinfo(tmp_path):
+    """Ein shop-markierter Deal, der zugleich Tiefstpreis ist, bekommt den
+    Hinweis in der Begruendung und einen Score-Bonus - Historie ist aber
+    nicht mehr Voraussetzung fuer den Deal selbst."""
+    store = Store(tmp_path / "test.db")
+    today = datetime.now(timezone.utc)
+    for days_ago in range(30, 0, -1):
+        past = Offer(shop="test", product_id="42", title="Testfutter 1 kg",
+                     price_cents=1000, url="https://example.com/p/42",
+                     seen_at=today - timedelta(days=days_ago))
+        store.save_offers([past])
+
+    offer = Offer(shop="test", product_id="42", title="Testfutter 1 kg",
+                  price_cents=700, list_price_cents=1000,
+                  url="https://example.com/p/42")
+    deals = find_deals(store, [offer])
+    assert len(deals) == 1
+    assert deals[0].is_all_time_low
+    assert "Tiefstpreis" in deals[0].reason
     store.close()
