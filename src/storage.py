@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS offers (
     price_cents      INTEGER NOT NULL,
     list_price_cents INTEGER,
     is_marked_down   INTEGER NOT NULL DEFAULT 0,
+    category         TEXT,
     unit_amount      REAL,
     unit             TEXT,
     available        INTEGER NOT NULL DEFAULT 1,
@@ -78,6 +79,8 @@ class Store:
             self.conn.execute(
                 "ALTER TABLE offers ADD COLUMN is_marked_down INTEGER NOT NULL DEFAULT 0"
             )
+        if "category" not in columns:
+            self.conn.execute("ALTER TABLE offers ADD COLUMN category TEXT")
 
     def close(self) -> None:
         self.conn.close()
@@ -99,13 +102,14 @@ class Store:
                 """
                 INSERT INTO offers (uid, shop, product_id, title, brand, url,
                     image_url, price_cents, list_price_cents, is_marked_down,
-                    unit_amount, unit, available, last_seen)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    category, unit_amount, unit, available, last_seen)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(uid) DO UPDATE SET
                     title=excluded.title,
                     price_cents=excluded.price_cents,
                     list_price_cents=excluded.list_price_cents,
                     is_marked_down=excluded.is_marked_down,
+                    category=excluded.category,
                     available=excluded.available,
                     last_seen=excluded.last_seen
                 """,
@@ -113,7 +117,7 @@ class Store:
                     offer.uid, offer.shop, offer.product_id, offer.title,
                     offer.brand, offer.url, offer.image_url, offer.price_cents,
                     offer.list_price_cents, int(offer.is_marked_down),
-                    offer.unit_amount, offer.unit,
+                    offer.category, offer.unit_amount, offer.unit,
                     int(offer.available), offer.seen_at.isoformat(),
                 ),
             )
@@ -190,6 +194,7 @@ def _row_to_offer(row: sqlite3.Row) -> Offer:
         brand=row["brand"],
         list_price_cents=row["list_price_cents"],
         is_marked_down=bool(row["is_marked_down"]),
+        category=row["category"],
         image_url=row["image_url"],
         unit_amount=row["unit_amount"],
         unit=row["unit"],

@@ -61,23 +61,23 @@ log = logging.getLogger(__name__)
 
 BASE = "https://www.zooplus.de"
 
-# Zurueck auf die normalen Kategorien. Kurzer Exkurs zur gefilterten
+# Startpunkte + grobes Label fuers Berichts-Gruppieren (siehe report.py).
+# Zurueck auf die normalen Kategorien - kurzer Exkurs zur gefilterten
 # Rabatt-Suche (/search/results?...&filters=...price_reduced): ein echter
-# Testlauf (siehe Chat-Verlauf) hat gezeigt, dass diese Seite zwar
-# erreichbar ist, aber KEIN Product-JSON-LD im HTML mitliefert (0 Treffer)
-# - vermutlich eine reine JS-Facettensuche ohne Server-Rendering, anders
-# als /shop/..., das nachweislich SEO-gerendert ist. Zooplus war im
-# urspruenglichen Vollkatalog-Crawl mit ~2 Minuten ohnehin nie der
-# Flaschenhals (das war Fressnapf mit seinen Einzelabrufen pro Produkt) -
-# den funktionierenden Teil aufzugeben, um eine kaputte Seite zu testen,
-# war die falsche Abwaegung. Dank paralleler Ausfuehrung (main.py) passt
-# Zooplus' Laufzeit ohnehin locker in Fressnapfs laengeres Zeitbudget, die
-# Gesamtlaufzeit steigt durch die volle Kategorien-Liste hier kaum.
+# Testlauf hat gezeigt, dass diese Seite zwar erreichbar ist, aber KEIN
+# Product-JSON-LD im HTML mitliefert (0 Treffer) - vermutlich eine reine
+# JS-Facettensuche ohne Server-Rendering, anders als /shop/..., das
+# nachweislich SEO-gerendert ist. Zooplus war im urspruenglichen
+# Vollkatalog-Crawl mit ~2 Minuten ohnehin nie der Flaschenhals (das war
+# Fressnapf mit seinen Einzelabrufen pro Produkt) - den funktionierenden
+# Teil aufzugeben, um eine kaputte Seite zu testen, war die falsche
+# Abwaegung. Dank paralleler Ausfuehrung (main.py) passt Zooplus' Laufzeit
+# ohnehin locker in Fressnapfs laengeres Zeitbudget.
 CATEGORIES = [
-    "/shop/katzen/katzenfutter_dose",
-    "/shop/katzen/katzenfutter_trockenfutter",
-    "/shop/katzen/katzenstreu",
-    "/shop/katzen/katzenspielzeug",
+    ("/shop/katzen/katzenfutter_dose", "Futter"),
+    ("/shop/katzen/katzenfutter_trockenfutter", "Futter"),
+    ("/shop/katzen/katzenstreu", "Streu"),
+    ("/shop/katzen/katzenspielzeug", "Spielzeug"),
 ]
 
 MAX_PAGES = 5
@@ -108,7 +108,7 @@ class ZooplusCrawler(BaseCrawler):
         count = 0
         seen: set[str] = set()
 
-        for category in CATEGORIES:
+        for category, label in CATEGORIES:
             for page in range(1, MAX_PAGES + 1):
                 url = _page_url(category, page)
                 log.info("%s: %s", self.shop, url)
@@ -126,7 +126,7 @@ class ZooplusCrawler(BaseCrawler):
 
                 new_on_page = 0
                 for raw in products:
-                    offer = self._to_offer(raw)
+                    offer = self._to_offer(raw, label)
                     if offer is None or offer.uid in seen:
                         continue
                     seen.add(offer.uid)
@@ -141,7 +141,7 @@ class ZooplusCrawler(BaseCrawler):
                 if new_on_page == 0:
                     break
 
-    def _to_offer(self, product: dict[str, Any]) -> Offer | None:
+    def _to_offer(self, product: dict[str, Any], category: str) -> Offer | None:
         try:
             offers = product.get("offers") or {}
             if isinstance(offers, list):
@@ -191,6 +191,7 @@ class ZooplusCrawler(BaseCrawler):
                 price_cents=price_cents,
                 url=url if url.startswith("http") else BASE + url,
                 brand=brand_name,
+                category=category,
                 image_url=image,
                 available="instock" in availability.replace("_", ""),
                 unit_amount=amount_unit[0] if amount_unit else None,

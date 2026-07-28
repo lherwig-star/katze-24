@@ -1,8 +1,8 @@
 # petdeals
 
-Bot, der Tierbedarf-Shops crawlt, Preise ueber Zeit verfolgt und echte
-Rabatte (gegen die eigene Preishistorie, nicht gegen Fantasie-Streichpreise)
-an einen Kanal meldet.
+Bot, der Tierbedarf-Shops crawlt und Produkte meldet, die der SHOP SELBST
+als reduziert markiert hat (nicht gegen die eigene Preishistorie - siehe
+src/dealengine.py fuer die Begruendung des Kurswechsels).
 
 ## Regeln fuer Claude Code in diesem Repo
 
@@ -48,3 +48,11 @@ an einen Kanal meldet.
   `main` - main bleibt PR-geschuetzter Code, `data` ist reine
   Bot-Historie. Lokal abholen: siehe README, Abschnitt "Automatisch
   crawlen".
+- `Offer.category` (z.B. "Futter", "Streu", "Spielzeug") wird von jedem
+  Crawler selbst vergeben (siehe CATEGORIES-Listen in den jeweiligen
+  Dateien). Unbekannt/None landet im Bericht unter "Sonstiges".
+- `src/report.py` baut den taeglichen, nach Kategorie gruppierten Bericht
+  zur manuellen Review (`python -m src.main report`). Wird nach jedem
+  Cloud-Crawl automatisch per Telegram an einen PRIVATEN Chat geschickt -
+  bewusst kein automatischer Versand in den oeffentlichen WhatsApp-Kanal.
+  Secrets `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` siehe README.

@@ -37,6 +37,8 @@ class Offer:
     # nur behaupten koennte, ist das ein strukturiertes Feld des Shops selbst.
     is_marked_down: bool = False  # Shop markiert es als reduziert, aber ohne
     # exakten Streichpreis (z.B. Zugehoerigkeit zu einer Sale-Kategorie).
+    category: str | None = None  # grobe Einordnung fuer den Bericht,
+    # z.B. "Futter", "Streu", "Spielzeug" - vom jeweiligen Crawler vergeben.
     image_url: str | None = None
     unit_amount: float | None = None  # z.B. 1.02 (fuer 12 x 85 g)
     unit: str | None = None  # "kg" | "l" | "stk"

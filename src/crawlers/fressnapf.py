@@ -59,10 +59,14 @@ BASE = "https://www.fressnapf.de"
 
 SALE_CATEGORY = "/c/katze/sale/"
 
+# (Pfad, Label fuers Berichts-Gruppieren)
 CATEGORIES = [
-    "/c/katze/katzenfutter/",
-    "/c/katze/katzenstreu/",
-    "/c/katze/katzenspielzeug/",
+    ("/c/katze/katzenfutter/", "Futter"),
+    ("/c/katze/hygiene-pflege/katzenstreu/", "Streu"),  # Fressnapf hat
+    # umstrukturiert, alter Pfad /c/katze/katzenstreu/ gibt inzwischen 404
+    # (im Cloud-Crawl vom 27.07. aufgefallen: 3 Fehlversuche, Kategorie
+    # wurde uebersprungen)
+    ("/c/katze/katzenspielzeug/", "Spielzeug"),
 ]
 
 _ID_RE = re.compile(r"-(\d+)/?$")
@@ -78,9 +82,13 @@ class FressnapfCrawler(BaseCrawler):
 
         # Sale-Kategorie zuerst, damit ihre is_marked_down=True-Markierung
         # gewinnt, falls ein Produkt auch in einer normalen Kategorie steht.
-        categories = [(SALE_CATEGORY, True)] + [(c, False) for c in CATEGORIES]
+        # Sale mischt alle Warengruppen - category bleibt dort None (siehe
+        # report.py: solche Angebote landen im Bericht unter "Sonstiges").
+        categories = [(SALE_CATEGORY, None, True)] + [
+            (path, label, False) for path, label in CATEGORIES
+        ]
 
-        for category, is_sale in categories:
+        for category, label, is_sale in categories:
             url = f"{BASE}{category}"
             log.info("%s: Kategorie %s%s", self.shop, url, " (Sale)" if is_sale else "")
             try:
@@ -100,7 +108,9 @@ class FressnapfCrawler(BaseCrawler):
                     continue
                 seen.add(product_url)
 
-                offer = self._fetch_product(product_url, is_marked_down=is_sale)
+                offer = self._fetch_product(
+                    product_url, category=label, is_marked_down=is_sale
+                )
                 if offer is None:
                     continue
                 yield offer
@@ -108,7 +118,9 @@ class FressnapfCrawler(BaseCrawler):
                 if limit and count >= limit:
                     return
 
-    def _fetch_product(self, url: str, is_marked_down: bool = False) -> Offer | None:
+    def _fetch_product(
+        self, url: str, category: str | None = None, is_marked_down: bool = False
+    ) -> Offer | None:
         try:
             html = self.fetcher.get(url).text
         except RuntimeError:
@@ -116,11 +128,14 @@ class FressnapfCrawler(BaseCrawler):
             return None
 
         for product in find_by_type(html, "Product"):
-            return self._to_offer(product, url, is_marked_down)
+            return self._to_offer(product, url, category, is_marked_down)
         log.debug("%s: kein Product-JSON-LD auf %s", self.shop, url)
         return None
 
-    def _to_offer(self, product: dict, url: str, is_marked_down: bool = False) -> Offer | None:
+    def _to_offer(
+        self, product: dict, url: str, category: str | None = None,
+        is_marked_down: bool = False,
+    ) -> Offer | None:
         try:
             offers = product.get("offers") or {}
             if isinstance(offers, list):
@@ -155,6 +170,7 @@ class FressnapfCrawler(BaseCrawler):
                 url=url,
                 brand=brand_name,
                 is_marked_down=is_marked_down,
+                category=category,
                 image_url=image,
                 available="instock" in availability.replace("_", ""),
                 unit_amount=amount_unit[0] if amount_unit else None,

@@ -70,15 +70,20 @@ python -m src.main deals
 python -m src.main send --dry-run           # nur anzeigen, nichts markieren
 python -m src.main send --via telegram       # echt verschicken
 
+# Taeglicher Bericht, nach Kategorie (Futter/Streu/Spielzeug/...) gruppiert -
+# zur manuellen Review, bevor ihr etwas in den WhatsApp-Kanal kopiert
+python -m src.main report --via telegram --top-per-category 5
+
 # Statistik über die eigene Datenbank
 python -m src.main stats
 ```
 
-**Wichtig:** In den ersten 1–2 Wochen findet `deals` fast nichts. Das ist
-kein Bug – die Deal-Erkennung braucht eigene Preishistorie, um einen echten
-Rabatt von einem Fantasie-Streichpreis zu unterscheiden. Lasst den Crawler
-täglich laufen (siehe Cron/GitHub-Action unten), die Daten lassen sich nicht
-nachträglich erzeugen.
+**Was zaehlt als Deal:** Ausschlaggebend ist, ob der SHOP SELBST das
+Produkt als reduziert markiert (z.B. Zooplus' eigenes StrikethroughPrice-
+Feld oder Fressnapfs Sale-Kategorie) - nicht mehr die eigene Preishistorie.
+Die Historie liefert nur noch einen Zusatz-Hinweis in der Nachricht
+("...und das ist sogar Tiefstpreis der letzten 30 Tage"). Details und die
+Begründung dafür stehen in `src/dealengine.py`.
 
 ### Täglich automatisch crawlen
 
@@ -103,6 +108,38 @@ python -m src.main stats   # zum Prüfen
 crontab -e
 # Zeile einfügen (crawlt jeden Tag um 8 Uhr):
 0 8 * * * cd /pfad/zu/petdeals && venv/bin/python -m src.main crawl >> logs/cron.log 2>&1
+```
+
+### Täglicher Bericht (zur manuellen Review)
+
+Nach jedem Cloud-Crawl schickt `.github/workflows/crawl.yml` automatisch
+einen Bericht – nach Kategorie gruppiert, mit den besten Deals fertig
+formatiert zum Kopieren – an einen **privaten** Telegram-Chat. Das ist
+bewusst kein automatischer Versand in den öffentlichen WhatsApp-Kanal:
+ihr schaut euch den Bericht an, sucht euch die guten Deals raus und
+postet die von Hand.
+
+Einmalig einrichten (dauert ~5 Minuten):
+1. In Telegram `@BotFather` anschreiben → `/newbot` → Namen vergeben →
+   Token kopieren.
+2. Einen privaten Gruppenchat mit euch beiden anlegen, den Bot dort
+   reinladen, irgendwas in den Chat schreiben (damit er "gesehen" wird).
+3. `https://api.telegram.org/bot<TOKEN>/getUpdates` im Browser öffnen,
+   darin `"chat":{"id": ...}` suchen (bei Gruppen negativ, z.B. `-123456`).
+4. Auf GitHub: *Settings → Secrets and variables → Actions → New
+   repository secret* – zweimal:
+   - `TELEGRAM_BOT_TOKEN` = der Token aus Schritt 1
+   - `TELEGRAM_CHAT_ID` = die ID aus Schritt 3
+
+Ohne diese beiden Secrets läuft der Crawl trotzdem – der Bericht landet
+dann einfach nur im Actions-Log statt bei euch in Telegram (kein
+Fehlschlag, siehe `src/main.py::cmd_report`).
+
+Lokal ausprobieren, sobald ihr `.env` ausgefüllt habt (siehe
+`.env.example`):
+```bash
+python -m src.main report --via telegram --top-per-category 5
+python -m src.main report                      # ohne Telegram, nur zum Angucken
 ```
 
 ## Einen neuen Shop anbinden

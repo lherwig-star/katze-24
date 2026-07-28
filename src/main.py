@@ -9,6 +9,7 @@ Beispiele:
     python -m src.main crawl
     python -m src.main deals
     python -m src.main send --dry-run
+    python -m src.main report --via telegram
     python -m src.main stats
 """
 
@@ -144,6 +145,27 @@ def cmd_send(args: argparse.Namespace) -> None:
         print(f"\n{sent} Deal(s) {'simuliert' if args.dry_run else 'verschickt'}")
 
 
+def cmd_report(args: argparse.Namespace) -> None:
+    from src.report import build_report
+
+    try:
+        notifier = get_notifier(args.via)
+    except SystemExit as exc:
+        # Typisch in der Cloud, solange TELEGRAM_BOT_TOKEN/CHAT_ID noch
+        # nicht als GitHub-Secret hinterlegt sind - Bericht trotzdem
+        # anzeigen statt den ganzen Job scheitern zu lassen.
+        print(f"{exc}\nZeige den Bericht stattdessen hier an:\n")
+        notifier = get_notifier("console")
+
+    with Store() as store:
+        offers = store.current_offers(args.shop)
+        deals = find_deals(store, offers, min_discount=args.min_discount)
+        chunks = build_report(deals, top_per_category=args.top_per_category)
+
+    sent = sum(1 for chunk in chunks if notifier.send(chunk))
+    print(f"\nBericht: {sent}/{len(chunks)} Nachricht(en) via {args.via}")
+
+
 def cmd_stats(args: argparse.Namespace) -> None:
     with Store() as store:
         for key, value in store.stats().items():
@@ -179,6 +201,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true",
                    help="nur anzeigen, nichts verschicken oder markieren")
     p.set_defaults(func=cmd_send)
+
+    p = sub.add_parser(
+        "report", help="Bericht nach Kategorie gruppiert (zur manuellen Review)"
+    )
+    p.add_argument("--shop")
+    p.add_argument("--min-discount", type=float, default=MIN_DISCOUNT_PCT)
+    p.add_argument("--top-per-category", type=int, default=5)
+    p.add_argument("--via", default="console", help="console | file | telegram")
+    p.set_defaults(func=cmd_report)
 
     sub.add_parser("stats", help="Datenbank-Statistik").set_defaults(func=cmd_stats)
     return parser
