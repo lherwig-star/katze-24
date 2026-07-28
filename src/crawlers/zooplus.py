@@ -39,25 +39,23 @@ log = logging.getLogger(__name__)
 
 BASE = "https://www.zooplus.de"
 
-# Bewusst NUR die gefilterte Rabatt-Uebersicht, keine normalen Kategorien
-# mehr - der Crawler soll ausschliesslich das durchsuchen, was Zooplus
-# selbst als reduziert markiert (siehe Chat-Entscheidung). Konsequenz: es
-# gibt keine Preishistorie mehr fuer Produkte ausserhalb dieser Seite, der
-# "eigene Historie"-Pfad in dealengine.py greift dadurch seltener - der
-# Fallback gegen offer.list_price_cents traegt jetzt die Hauptlast.
-#
-# ACHTUNG, zwei offene Punkte (siehe Chat-Verlauf):
-#   1. robots.txt ist bisher nur fuer /shop/... geprueft (siehe Docstring
-#      oben), NICHT fuer /search/... - vor dem produktiven Einsatz auf
-#      https://www.zooplus.de/robots.txt selbst nachsehen (von dieser
-#      Sandbox aus nicht moeglich, Netzwerksperre auf zooplus.de).
-#   2. Unklar, ob diese Seitenvorlage ueberhaupt Product-JSON-LD mitliefert
-#      (anders als /shop/..., das serverseitig fuer SEO gerendert wird -
-#      /search/results koennte eine reine JS-Facettensuche sein).
-#      find_by_type() liefert einfach nichts, wenn nicht - kein Absturz,
-#      aber ein echter Testlauf muss das zeigen.
+# Zurueck auf die normalen Kategorien. Kurzer Exkurs zur gefilterten
+# Rabatt-Suche (/search/results?...&filters=...price_reduced): ein echter
+# Testlauf (siehe Chat-Verlauf) hat gezeigt, dass diese Seite zwar
+# erreichbar ist, aber KEIN Product-JSON-LD im HTML mitliefert (0 Treffer)
+# - vermutlich eine reine JS-Facettensuche ohne Server-Rendering, anders
+# als /shop/..., das nachweislich SEO-gerendert ist. Zooplus war im
+# urspruenglichen Vollkatalog-Crawl mit ~2 Minuten ohnehin nie der
+# Flaschenhals (das war Fressnapf mit seinen Einzelabrufen pro Produkt) -
+# den funktionierenden Teil aufzugeben, um eine kaputte Seite zu testen,
+# war die falsche Abwaegung. Dank paralleler Ausfuehrung (main.py) passt
+# Zooplus' Laufzeit ohnehin locker in Fressnapfs laengeres Zeitbudget, die
+# Gesamtlaufzeit steigt durch die volle Kategorien-Liste hier kaum.
 CATEGORIES = [
-    "/search/results?q=Katze&ct=katzen%2Fkatze&filters=action%3Dhas_abd%3Bprice_reduced",
+    "/shop/katzen/katzenfutter_dose",
+    "/shop/katzen/katzenfutter_trockenfutter",
+    "/shop/katzen/katzenstreu",
+    "/shop/katzen/katzenspielzeug",
 ]
 
 MAX_PAGES = 5
