@@ -39,29 +39,24 @@ log = logging.getLogger(__name__)
 
 BASE = "https://www.zooplus.de"
 
-# Startpunkte. Hier koennt ihr beliebig erweitern - Katzenfutter, Zubehoer,
-# Spielzeug, aber auch gefilterte Seiten wie eine Rabatt-/Angebotsuebersicht
-# (die haben meist schon einen eigenen Query-String, siehe _page_url unten,
-# das ist deshalb kein einfaches "?p=" mehr).  Die URLs findet ihr, indem
-# ihr auf zooplus.de durch die Kategorien klickt und den Pfad kopiert.
+# Bewusst NUR die gefilterte Rabatt-Uebersicht, keine normalen Kategorien
+# mehr - der Crawler soll ausschliesslich das durchsuchen, was Zooplus
+# selbst als reduziert markiert (siehe Chat-Entscheidung). Konsequenz: es
+# gibt keine Preishistorie mehr fuer Produkte ausserhalb dieser Seite, der
+# "eigene Historie"-Pfad in dealengine.py greift dadurch seltener - der
+# Fallback gegen offer.list_price_cents traegt jetzt die Hauptlast.
 #
-# ACHTUNG bei neuen URL-Mustern (z.B. /search/results?...): robots.txt ist
-# bisher nur fuer /shop/... geprueft (siehe Docstring oben). Vor dem
-# produktiven Einsatz einer neuen URL unter einem anderen Pfad-Praefix
-# https://www.zooplus.de/robots.txt selbst nachsehen, ob der Pfad gesperrt
-# ist - das konnte von hier aus nicht geprueft werden (Sandbox-Netzwerksperre
-# auf zooplus.de, siehe Chat-Verlauf).
+# ACHTUNG, zwei offene Punkte (siehe Chat-Verlauf):
+#   1. robots.txt ist bisher nur fuer /shop/... geprueft (siehe Docstring
+#      oben), NICHT fuer /search/... - vor dem produktiven Einsatz auf
+#      https://www.zooplus.de/robots.txt selbst nachsehen (von dieser
+#      Sandbox aus nicht moeglich, Netzwerksperre auf zooplus.de).
+#   2. Unklar, ob diese Seitenvorlage ueberhaupt Product-JSON-LD mitliefert
+#      (anders als /shop/..., das serverseitig fuer SEO gerendert wird -
+#      /search/results koennte eine reine JS-Facettensuche sein).
+#      find_by_type() liefert einfach nichts, wenn nicht - kein Absturz,
+#      aber ein echter Testlauf muss das zeigen.
 CATEGORIES = [
-    "/shop/katzen/katzenfutter_dose",
-    "/shop/katzen/katzenfutter_trockenfutter",
-    "/shop/katzen/katzenstreu",
-    "/shop/katzen/katzenspielzeug",
-    # Gefilterte Suche nur auf reduzierte Katzenartikel - noch NICHT
-    # verifiziert, ob diese Seitenvorlage ueberhaupt Product-JSON-LD
-    # mitliefert (anders als /shop/..., das laeuft ueber Server-Side-
-    # Rendering fuer SEO; /search/results koennte ein anderes Template
-    # sein). find_by_type() liefert einfach nichts, wenn nicht - kein
-    # Absturz, aber pruefen, ob hier tatsaechlich Treffer reinkommen.
     "/search/results?q=Katze&ct=katzen%2Fkatze&filters=action%3Dhas_abd%3Bprice_reduced",
 ]
 

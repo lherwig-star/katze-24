@@ -50,21 +50,25 @@ log = logging.getLogger(__name__)
 
 BASE = "https://www.fressnapf.de"
 
+# Bewusst NUR die Sale-/Angebotsseite, keine normalen Kategorien mehr -
+# der Crawler soll ausschliesslich das durchsuchen, was Fressnapf selbst
+# als reduziert markiert (siehe Chat-Entscheidung). Konsequenz: keine
+# Preishistorie mehr fuer Produkte ausserhalb dieser Seite, der "eigene
+# Historie"-Pfad in dealengine.py greift dadurch seltener - der Fallback
+# gegen offer.list_price_cents traegt jetzt die Hauptlast.
+#
+# ACHTUNG, zwei offene Punkte (siehe Chat-Verlauf):
+#   1. robots.txt ist bisher nur fuer /c/... und /p/... geprueft (siehe
+#      Recherche oben) - /aktionen-angebote/... ist ein neuer, noch nicht
+#      kontrollierter Pfad. Vor dem produktiven Einsatz auf
+#      https://www.fressnapf.de/robots.txt nachsehen (von dieser Sandbox
+#      aus nicht moeglich, Netzwerksperre auf fressnapf.de).
+#   2. Unklar, ob diese Seite dieselbe ItemList-JSON-LD-Struktur liefert
+#      wie /c/... (SSR fuer SEO) oder eine reine JS-Facettensuche ist, die
+#      serverseitig nichts mitliefert. find_by_type() liefert einfach
+#      nichts, wenn nicht - kein Absturz, aber ein echter Testlauf muss
+#      das zeigen.
 CATEGORIES = [
-    "/c/katze/katzenfutter/",
-    "/c/katze/katzenstreu/",
-    "/c/katze/katzenspielzeug/",
-    # Sale-/Angebotsseite mit Rabatt-Filtern. ACHTUNG, zwei offene Punkte:
-    #   1. robots.txt ist bisher nur fuer /c/... und /p/... geprueft (siehe
-    #      Recherche oben) - /aktionen-angebote/... ist ein neuer, noch
-    #      nicht kontrollierter Pfad. Vor dem produktiven Einsatz auf
-    #      https://www.fressnapf.de/robots.txt nachsehen (von dieser
-    #      Sandbox aus nicht moeglich, siehe Chat-Verlauf).
-    #   2. Unklar, ob diese Seite dieselbe ItemList-JSON-LD-Struktur
-    #      liefert wie /c/... (SSR fuer SEO) oder eine reine JS-Facetten-
-    #      suche ist, die serverseitig nichts mitliefert. find_by_type()
-    #      liefert einfach nichts, wenn nicht - kein Absturz, aber ein
-    #      echter Testlauf muss das zeigen.
     "/aktionen-angebote/sale/?q=:savingsRelative:badgesFacet:discount:badgesFacet:deal:badgesFacet:discount:badgesFacet:deal:category:cat",
 ]
 
