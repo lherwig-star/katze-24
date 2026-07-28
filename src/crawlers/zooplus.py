@@ -40,17 +40,49 @@ log = logging.getLogger(__name__)
 BASE = "https://www.zooplus.de"
 
 # Startpunkte. Hier koennt ihr beliebig erweitern - Katzenfutter, Zubehoer,
-# Spielzeug. Die URLs findet ihr, indem ihr auf zooplus.de durch die
-# Kategorien klickt und den Pfad kopiert.
+# Spielzeug, aber auch gefilterte Seiten wie eine Rabatt-/Angebotsuebersicht
+# (die haben meist schon einen eigenen Query-String, siehe _page_url unten,
+# das ist deshalb kein einfaches "?p=" mehr).  Die URLs findet ihr, indem
+# ihr auf zooplus.de durch die Kategorien klickt und den Pfad kopiert.
+#
+# ACHTUNG bei neuen URL-Mustern (z.B. /search/results?...): robots.txt ist
+# bisher nur fuer /shop/... geprueft (siehe Docstring oben). Vor dem
+# produktiven Einsatz einer neuen URL unter einem anderen Pfad-Praefix
+# https://www.zooplus.de/robots.txt selbst nachsehen, ob der Pfad gesperrt
+# ist - das konnte von hier aus nicht geprueft werden (Sandbox-Netzwerksperre
+# auf zooplus.de, siehe Chat-Verlauf).
 CATEGORIES = [
     "/shop/katzen/katzenfutter_dose",
     "/shop/katzen/katzenfutter_trockenfutter",
     "/shop/katzen/katzenstreu",
     "/shop/katzen/katzenspielzeug",
+    # Gefilterte Suche nur auf reduzierte Katzenartikel - noch NICHT
+    # verifiziert, ob diese Seitenvorlage ueberhaupt Product-JSON-LD
+    # mitliefert (anders als /shop/..., das laeuft ueber Server-Side-
+    # Rendering fuer SEO; /search/results koennte ein anderes Template
+    # sein). find_by_type() liefert einfach nichts, wenn nicht - kein
+    # Absturz, aber pruefen, ob hier tatsaechlich Treffer reinkommen.
+    "/search/results?q=Katze&ct=katzen%2Fkatze&filters=action%3Dhas_abd%3Bprice_reduced",
 ]
 
 MAX_PAGES = 5
 _ID_RE = re.compile(r"/(\d{4,})(?:\?|$)")
+
+
+def _page_url(category: str, page: int) -> str:
+    """Kategorie-URL um den Seiten-Parameter ergaenzen.
+
+    Die meisten Eintraege in CATEGORIES sind einfache Pfade ohne
+    Query-String ("/shop/..."), aber gefilterte Seiten wie eine
+    Rabatt-Uebersicht (".../search/results?q=...&filters=...") haben
+    schon eines. Ein hartcodiertes "?p=" wuerde dort ein zweites "?" in
+    die URL setzen und sie kaputt machen - deshalb hier "&p=" anhaengen,
+    wenn schon ein "?" vorhanden ist.
+    """
+    if page <= 1:
+        return f"{BASE}{category}"
+    sep = "&" if "?" in category else "?"
+    return f"{BASE}{category}{sep}p={page}"
 
 
 class ZooplusCrawler(BaseCrawler):
@@ -63,7 +95,7 @@ class ZooplusCrawler(BaseCrawler):
 
         for category in CATEGORIES:
             for page in range(1, MAX_PAGES + 1):
-                url = f"{BASE}{category}" + (f"?p={page}" if page > 1 else "")
+                url = _page_url(category, page)
                 log.info("%s: %s", self.shop, url)
 
                 try:
