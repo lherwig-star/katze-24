@@ -74,6 +74,11 @@ python -m src.main send --via telegram       # echt verschicken
 # zur manuellen Review, bevor ihr etwas in den WhatsApp-Kanal kopiert
 python -m src.main report --via telegram --top-per-category 5
 
+# Fertige Deal-Karten als PNG (1080x1080, Instagram/Facebook-Format) mit
+# echtem Produktfoto - zum direkten Hochladen
+python -m src.main cards --top 10
+# liegen danach in data/cards/
+
 # Statistik über die eigene Datenbank
 python -m src.main stats
 ```

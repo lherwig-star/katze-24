@@ -56,3 +56,9 @@ src/dealengine.py fuer die Begruendung des Kurswechsels).
   Cloud-Crawl automatisch per Telegram an einen PRIVATEN Chat geschickt -
   bewusst kein automatischer Versand in den oeffentlichen WhatsApp-Kanal.
   Secrets `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` siehe README.
+- `src/cards.py` erzeugt aus einem Deal eine fertige PNG-Karte (1080x1080,
+  Instagram/Facebook-Format) mit echtem Produktfoto - `python -m src.main
+  cards`. Nutzt Pillow (kein Browser/Playwright), Schrift liegt unter
+  `assets/fonts/` (Poppins, OFL-Lizenz). Emojis bewusst NICHT genutzt
+  (Farb-Emoji-Rendering in Pillow ist fragil) - die Pfote ist aus Kreisen
+  gezeichnet, siehe `_draw_paw()`.
