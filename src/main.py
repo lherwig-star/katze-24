@@ -10,6 +10,7 @@ Beispiele:
     python -m src.main deals
     python -m src.main send --dry-run
     python -m src.main report --via telegram
+    python -m src.main cards --top 10
     python -m src.main stats
 """
 
@@ -166,6 +167,25 @@ def cmd_report(args: argparse.Namespace) -> None:
     print(f"\nBericht: {sent}/{len(chunks)} Nachricht(en) via {args.via}")
 
 
+def cmd_cards(args: argparse.Namespace) -> None:
+    from pathlib import Path
+
+    from src.cards import save_cards
+
+    with Store() as store:
+        offers = store.current_offers(args.shop)
+        deals = find_deals(store, offers, min_discount=args.min_discount)
+
+    if not deals:
+        print("Keine Deals gefunden - keine Karten erzeugt.")
+        return
+
+    paths = save_cards(deals, Path(args.out), limit=args.top)
+    for p in paths:
+        print(f"  {p}")
+    print(f"\n{len(paths)} Karte(n) in {args.out}/")
+
+
 def cmd_stats(args: argparse.Namespace) -> None:
     with Store() as store:
         for key, value in store.stats().items():
@@ -210,6 +230,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--top-per-category", type=int, default=5)
     p.add_argument("--via", default="console", help="console | file | telegram")
     p.set_defaults(func=cmd_report)
+
+    p = sub.add_parser(
+        "cards", help="Deal-Karten als PNG erzeugen (Instagram/Facebook-Format)"
+    )
+    p.add_argument("--shop")
+    p.add_argument("--min-discount", type=float, default=MIN_DISCOUNT_PCT)
+    p.add_argument("--top", type=int, default=10)
+    p.add_argument("--out", default="data/cards", help="Zielordner fuer die PNGs")
+    p.set_defaults(func=cmd_cards)
 
     sub.add_parser("stats", help="Datenbank-Statistik").set_defaults(func=cmd_stats)
     return parser
