@@ -10,6 +10,13 @@ name: Crawl
 # Preisdaten lokal abholen:
 #   git fetch origin data
 #   git show origin/data:data/petdeals.db > data/petdeals.db
+#
+# Nach dem Crawlen wird zusaetzlich ein Bericht (nach Kategorie gruppiert,
+# zur manuellen Review) an einen privaten Telegram-Chat geschickt - siehe
+# README, Abschnitt "Taeglicher Bericht". Solange TELEGRAM_BOT_TOKEN/
+# TELEGRAM_CHAT_ID nicht als Repo-Secrets hinterlegt sind, wird der
+# Bericht stattdessen einfach nur ins Actions-Log geschrieben (kein
+# Fehlschlag des Jobs).
 
 on:
   schedule:
@@ -41,6 +48,12 @@ jobs:
 
       - name: Crawlen
         run: python -m src.main crawl
+
+      - name: Bericht erstellen und verschicken
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m src.main report --via telegram --top-per-category 5
 
       - name: Preisdaten auf data-Branch committen
         run: |
